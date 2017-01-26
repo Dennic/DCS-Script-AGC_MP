@@ -125,7 +125,7 @@ function agc.checkTraffic()
 
 end
 
-function agc.disablePlayer(_flagName)
+--[[function agc.disablePlayer(_flagName)
     
     local _timeleft = trigger.misc.getUserFlag(_flagName)
     if 0 < _timeleft <= agc.disableTimeout then
@@ -163,7 +163,7 @@ function agc.eventHandler:onEvent(_eventDCS)
     if (not status) then
         env.error(string.format("Error while handling event %s", err),false)
     end
-end
+end]]--
 
 
 for _,_runway in pairs(agc.Runway) do
