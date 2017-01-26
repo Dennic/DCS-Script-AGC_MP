@@ -4,7 +4,11 @@ local agcST = {}
 -- AGC_MP 服务器可选飞机管理工具
 -- AGC_MP Slot Blocking Tools
 --
--- Version 1.1
+-- Version 1.2
+--
+-- Change logs:
+--     1. 修复了跑道区域判定的问题。
+--     2. 修复了玩家回到观众席消息刷屏的问题。
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
@@ -128,7 +132,7 @@ agcST.onGameEvent = function(eventName,playerID,arg2,arg3,arg4) -- This stops th
                         local _time = math.floor(os.time())
                         local _timeout = agcST.getFlagValue("AGC_DisableTimeout")
                         agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] = _time + _timeout
-                        agcST.disabledPlayer(playerID, _timeout)
+                        agcST.disabledPlayer(playerID, _timeout, true)
                     end
 
                 end
@@ -154,10 +158,11 @@ agcST.onPlayerTryChangeSlot = function(playerID, side, slotID)
                 if agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] then
                     local _time = math.floor(os.time())
                     if agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] > _time then
-                        agcST.disabledPlayer(playerID, agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] - _time)
+                        agcST.disabledPlayer(playerID, agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] - _time, false)
                         return false
                     end
                 end
+
         end
 
         net.log("allowing -  playerid: "..playerID.." side:"..side.." slot: "..slotID)
@@ -168,11 +173,13 @@ agcST.onPlayerTryChangeSlot = function(playerID, side, slotID)
 end
 
 
-agcST.disabledPlayer = function(playerID, timeLeft)
+agcST.disabledPlayer = function(playerID, timeLeft, _toSpectators)
 
-    -- put to spectators
-    net.force_player_slot(playerID, 0, '')
-
+    if _toSpectators then
+        -- put to spectators
+        net.force_player_slot(playerID, 0, '')
+    end
+        
     local _playerName = net.get_player_info(playerID, 'name')
 
     if _playerName ~= nil then

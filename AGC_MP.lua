@@ -1,7 +1,11 @@
 -- DCS 机场地面控制 (MP)
 -- DCS Airfield Ground Controller (MP)
 --
--- Version 1.1
+-- Version 1.2
+--
+-- Change logs:
+--     1. 修复了跑道区域判定的问题。
+--     2. 修复了玩家回到观众席消息刷屏的问题。
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
@@ -171,7 +175,12 @@ for _,_runway in pairs(agc.Runway) do
     if Group.getByName(_runway.name) then
         local _points = mist.getGroupPoints(_runway.name)
         _runway.polygon = _points
-        local _landAlt = land.getHeight(_points[1])
+        local _landAlt = 0
+        for _,_point in pairs(_points) do
+            if land.getHeight(_point) > _landAlt then
+                _landAlt = land.getHeight(_point)
+            end
+        end
         _runway.maxAlt = _landAlt + agc.maxAlt
     else
         _runway.polygon = nil
