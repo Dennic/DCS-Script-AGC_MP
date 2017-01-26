@@ -1,11 +1,10 @@
 -- DCS 机场地面控制 (MP)
 -- DCS Airfield Ground Controller (MP)
 --
--- Version 1.2
+-- Version 1.3
 --
 -- Change logs:
---     1. 修复了跑道区域判定的问题。
---     2. 修复了玩家回到观众席消息刷屏的问题。
+--     1. 修复了部分错误代码
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
@@ -102,23 +101,28 @@ function agc.checkTraffic()
     local _units = mist.getUnitsInZones(_AllPlanes ,agc.Airfield)
     for __,_unit in pairs(_units) do
     
-        if _unit:isActive() and _unit:getLife() > 0 and _unit:inAir() == false and _unit:getPlayerName() then
+        if _unit:isActive() and _unit:getLife() > 0 and _unit:getPlayerName() then
     
             if _unit:inAir() then
-                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
-            else
-                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
-            end
             
-            if agc.checkOnRunway(_unit) then
-                trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+                
             else
-                trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
-                local _unitData = mist.utils.unitToWP( _unit )
-                local _unitSpeed = math.floor(mist.utils.mpsToKnots(_unitData["speed"]))
-                if _unitSpeed > agc.noticeTexiSpeed then
-                    agc.displayNotice(_unit, string.format(agc.overspeedNotice, _unitSpeed, agc.noticeTexiSpeed), 1, "noticeTexiSpeed", true)
+            
+                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
+                
+                
+                if agc.checkOnRunway(_unit) then
+                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+                else
+                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
+                    local _unitData = mist.utils.unitToWP( _unit )
+                    local _unitSpeed = math.floor(mist.utils.mpsToKnots(_unitData["speed"]))
+                    if _unitSpeed > agc.noticeTexiSpeed then
+                        agc.displayNotice(_unit, string.format(agc.overspeedNotice, _unitSpeed, agc.noticeTexiSpeed), 1, "noticeTexiSpeed", true)
+                    end
                 end
+                
             end
             
         end
