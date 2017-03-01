@@ -1,10 +1,12 @@
 -- DCS 机场地面控制 (MP)
 -- DCS Airfield Ground Controller (MP)
 --
--- Version 1.3
+-- Version 1.4
 --
 -- Change logs:
---     1. 修复了部分错误代码
+--     1. 修改了判断逻辑，优化代码
+--     2. 增加了跑道外着陆检测
+--     3. 增加了管理员命令
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
@@ -31,7 +33,7 @@ agc.overspeedNotice = "【注意】%i 节 - 你已超速，请立刻减速！\n�
 
 -- 最高监测高度（离地高度）
 -- max monitor altitude (AGL)
-agc.maxAlt = 10
+agc.maxAlt = 500
 
 agc.Runway = {
     {
@@ -60,8 +62,6 @@ agc.Airfield = {
     "Airfield5",
 
 }
-
-
 
 
 function agc.displayNotice(_unit, _text, _time, _type, _playsound)
@@ -103,24 +103,16 @@ function agc.checkTraffic()
     
         if _unit:isActive() and _unit:getLife() > 0 and _unit:getPlayerName() then
     
-            if _unit:inAir() then
-            
-                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+            if not _unit:inAir() then
                 
-            else
-            
-                trigger.action.setUserFlag("AGC_DontEject" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
+                if not agc.checkOnRunway(_unit) then
                 
-                
-                if agc.checkOnRunway(_unit) then
-                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
-                else
-                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
                     local _unitData = mist.utils.unitToWP( _unit )
                     local _unitSpeed = math.floor(mist.utils.mpsToKnots(_unitData["speed"]))
                     if _unitSpeed > agc.noticeTexiSpeed then
                         agc.displayNotice(_unit, string.format(agc.overspeedNotice, _unitSpeed, agc.noticeTexiSpeed), 1, "noticeTexiSpeed", true)
                     end
+                    
                 end
                 
             end
@@ -128,51 +120,70 @@ function agc.checkTraffic()
         end
     end
 
-
     mist.scheduleFunction(agc.checkTraffic, {}, timer.getTime() + 1)
 
 end
 
---[[function agc.disablePlayer(_flagName)
-    
-    local _timeleft = trigger.misc.getUserFlag(_flagName)
-    if 0 < _timeleft <= agc.disableTimeout then
-        trigger.action.setUserFlag(_flagName, _timeleft-1)
-        mist.scheduleFunction(agc.disablePlayer, _flagName, timer.getTime() + 1)
-    end
 
+function agc.onAirfield(_unit)
+    local _unitName = _unit:getName()
+    local _units = mist.getUnitsInZones({_unitName} ,agc.Airfield)
+
+    if #(_units) > 0 then
+        return true
+    else
+        return false
+    end
+    
 end
+
+function agc.isPlane(_unit)
+    local _unitName = _unit:getName()
+    local _AllPlanes = mist.makeUnitTable({"[all][plane]"})
+
+    for _,__unitName in pairs(_AllPlanes) do
+        if _unitName == __unitName then
+            return true
+        end
+    end
+    
+    return false
+end
+
 
 -- Handles all world events
 agc.eventHandler = {}
-function agc.eventHandler:onEvent(_eventDCS)
+function agc.eventHandler:onEvent(_event)
     local status, err = pcall(function(_event)
 
         if _event == nil or _event.initiator == nil then
             return false
-
-        elseif _event.id == 3 then -- taken off
             
-            local _flag = trigger.misc.getUserFlag("AGC_DontTakeoff" .. _event.initiator:getPlayerName():gsub('%W', ''))
-            if _flag == 1 then
-                local _flagName = "AGC_Violation" .. _event.initiator:getPlayerName():gsub('%W', '')
-                trigger.action.setUserFlag(_flagName, agc.disableTimeout)
-                agc.disablePlayer(_flagName)
+        elseif  _event.id == 3 or _event.id == 4 then -- 起飞或着陆
+        
+            local _unit = _event.initiator
+            
+            if  _unit:getPlayerName() and agc.isPlane(_unit) and agc.onAirfield(_unit) then
+
+                if agc.checkOnRunway(_unit) then
+                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+                    trigger.action.setUserFlag("AGC_DontLand" .. string.gsub(_unit:getPlayerName(), '%W', ''), 0)
+                else
+                    trigger.action.setUserFlag("AGC_DontTakeoff" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
+                    trigger.action.setUserFlag("AGC_DontLand" .. string.gsub(_unit:getPlayerName(), '%W', ''), 1)
+                end
+                
+            else
+                
             end
             
-        elseif world.event.S_EVENT_EJECTION == _event.id then
-            
-            mist.scheduleFunction(trigger.action.setUserFlag, {"AGC_DontEject" .. _event.initiator:getPlayerName():gsub('%W', ''), 0}, timer.getTime() + 1)
-            
         end
-        
         return true
     end, _event)
     if (not status) then
         env.error(string.format("Error while handling event %s", err),false)
     end
-end]]--
-
+end
 
 for _,_runway in pairs(agc.Runway) do
 
@@ -200,6 +211,6 @@ end
 
 trigger.action.setUserFlag("AGC_DisableTimeout", agc.disableTimeout)
 
---world.addEventHandler(agc.eventHandler)
+world.addEventHandler(agc.eventHandler)
 
 mist.scheduleFunction(agc.checkTraffic, nil, timer.getTime() + 1)

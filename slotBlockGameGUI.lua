@@ -4,18 +4,19 @@ local agcST = {}
 -- AGC_MP 服务器可选飞机管理工具
 -- AGC_MP Slot Blocking Tools
 --
--- Version 1.2
+-- Version 1.4
 --
 -- Change logs:
---     1. 修复了跑道区域判定的问题。
---     2. 修复了玩家回到观众席消息刷屏的问题。
+--     1. 修改了判断逻辑，优化代码
+--     2. 增加了跑道外着陆检测
+--     3. 增加了管理员命令
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
 
 agcST.disabledPlayerTimeleft = {}
-
-
+agcST.playerIDList = {}
+agcST.Admins = {"Server Admin", "小恐龙Dennic", }
 
 function agcST.agcCheck(_playerID, _slotID, _mode)
 
@@ -33,17 +34,9 @@ function agcST.agcCheck(_playerID, _slotID, _mode)
         _flag = agcST.getFlagValue("AGC_DontTakeoff".._playerName:gsub('%W',''))
         
         if _flag == 1 then
-            if _mode == 1 then
-                local _funcStr = string.format(" return ssb.violation(\"%s\");",_playerName:gsub('%W',''))
-                local _status,_error = net.dostring_in('server',_funcStr)
-            end
             return false
         end
-        
-        
-        
-        
-        
+      
     elseif _mode == 2 then
         _flag = agcST.getFlagValue("AGC_DontEject".._playerName:gsub('%W',''))
         
@@ -51,16 +44,12 @@ function agcST.agcCheck(_playerID, _slotID, _mode)
             return false
         end
         
-        
     elseif _mode == 3 then
-        _flag = agcST.getFlagValue("AGC_Violation".._playerName:gsub('%W',''))
+        _flag = agcST.getFlagValue("AGC_DontLand".._playerName:gsub('%W',''))
         
-        return _flag
-        
-        
-        
-        
-        
+        if _flag == 1 then
+            return false
+        end
         
     else
         return true
@@ -117,21 +106,25 @@ agcST.onGameEvent = function(eventName,playerID,arg2,arg3,arg4) -- This stops th
 
                 end
                 
-            elseif eventName == "takeoff" then
+            elseif eventName == "takeoff" or eventName == "landing" then
             
                 -- is player in a slot and valid?
                 _playerDetails = net.get_player_info(playerID)
 
                 if _playerDetails ~=nil and _playerDetails.side ~= 0 and _playerDetails.slot ~= "" and _playerDetails.slot ~= nil then
-
-                    _allow = agcST.agcCheck(playerID, _playerDetails.slot, 1)
+                    
+                    if eventName == "takeoff" then
+                        _allow = agcST.agcCheck(playerID, _playerDetails.slot, 1)
+                    elseif eventName == "landing" then
+                        _allow = agcST.agcCheck(playerID, _playerDetails.slot, 3)
+                    end
 
                     if not _allow then
                         local _playerName = _playerDetails.name
 
                         local _time = math.floor(os.time())
                         local _timeout = agcST.getFlagValue("AGC_DisableTimeout")
-                        agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] = _time + _timeout
+                        agcST.disabledPlayerTimeleft[_playerName] = _time + _timeout
                         agcST.disabledPlayer(playerID, _timeout, true)
                     end
 
@@ -155,14 +148,17 @@ agcST.onPlayerTryChangeSlot = function(playerID, side, slotID)
                 
                 local _playerName = _playerDetails.name
                 
-                if agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] then
+                if agcST.disabledPlayerTimeleft[_playerName] then
                     local _time = math.floor(os.time())
-                    if agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] > _time then
-                        agcST.disabledPlayer(playerID, agcST.disabledPlayerTimeleft[_playerName:gsub('%W','')] - _time, false)
+                    if agcST.disabledPlayerTimeleft[_playerName] > _time then
+                        agcST.disabledPlayer(playerID, agcST.disabledPlayerTimeleft[_playerName] - _time, false)
                         return false
                     end
                 end
-
+                
+				
+				agcST.playerIDList[_playerName] = playerID
+				net.log("Add to playerIDList: ".._playerName.." -- "..playerID)
         end
 
         net.log("allowing -  playerid: "..playerID.." side:"..side.." slot: "..slotID)
@@ -170,6 +166,68 @@ agcST.onPlayerTryChangeSlot = function(playerID, side, slotID)
 
     return true
 
+end
+
+agcST.onPlayerTrySendChat = function(playerID, msg, all)
+
+ --   if  DCS.isServer() and DCS.isMultiplayer() then
+
+        local _playerName = net.get_player_info(playerID, 'name')
+
+        if _playerName ~= nil then
+
+			if agcST.checkInTable(agcST.Admins, _playerName) then
+			
+				local _cmd = agcST.trimStr(msg)
+			
+				local _chatMessage = ""
+            
+                if _cmd:sub(1,4) == "-ban" and agcST.playerIDList[_cmd:sub(6,-1)] ~= nil then
+                
+                    local _time = math.floor(os.time())
+                    local _timeout = agcST.getFlagValue("AGC_DisableTimeout")
+                    agcST.disabledPlayerTimeleft[_cmd:sub(6,-1)] = _time + _timeout
+                    agcST.disabledPlayer(agcST.playerIDList[_cmd:sub(6,-1)], _timeout, true)
+					_chatMessage = string.format("玩家【%s】被管理员停飞 %i 秒。", _cmd:sub(6,-1), _timeout)
+					net.send_chat(_chatMessage, 0, 0)
+            
+                elseif _cmd:sub(1,5) == "-kick" and agcST.playerIDList[_cmd:sub(7,-1)] ~= nil then
+				
+                    net.force_player_slot(agcST.playerIDList[_cmd:sub(7,-1)], 0, '')
+					_chatMessage = string.format("玩家【%s】被管理员踢回到观众席。",_cmd:sub(7,-1))
+					net.send_chat(_chatMessage, 0, 0)
+            
+                end
+            
+            end
+			
+        else
+            net.log("playername null")
+        end
+
+    return msg
+end
+
+agcST.trimStr = function(_str)
+
+    return  string.format( "%s", _str:match( "^%s*(.-)%s*$" ) )
+end
+
+function agcST.checkInTable(_tb, _vl)
+		for _i,_v in pairs(_tb) do
+			if _v == _vl then
+				return true
+			end
+		end
+	return false
+end
+
+function agcST.chatmsg_net(text)
+	local clientindex = 0
+	while clientindex <= 128 do
+		net.send_chat(text, clientindex, clientindex)				
+		clientindex = clientindex + 1
+	end
 end
 
 
@@ -187,7 +245,6 @@ agcST.disabledPlayer = function(playerID, timeLeft, _toSpectators)
         net.send_chat_to(_chatMessage, playerID)
     end
 end
-
 
 
 DCS.setUserCallbacks(agcST)
