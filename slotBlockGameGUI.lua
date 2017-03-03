@@ -4,12 +4,10 @@ local agcST = {}
 -- AGC_MP 服务器可选飞机管理工具
 -- AGC_MP Slot Blocking Tools
 --
--- Version 1.4
+-- Version 1.5
 --
 -- Change logs:
---     1. 修改了判断逻辑，优化代码
---     2. 增加了跑道外着陆检测
---     3. 增加了管理员命令
+--     1. 修改了管理员命令，增加-id命令以查看玩家playerID。
 --
 -- By Dennic - https://github.com/Dennic/DCS-Script-AGC_MP
 --
@@ -172,31 +170,73 @@ agcST.onPlayerTrySendChat = function(playerID, msg, all)
 
  --   if  DCS.isServer() and DCS.isMultiplayer() then
 
-        local _playerName = net.get_player_info(playerID, 'name')
+        local _name = net.get_player_info(playerID, 'name')
 
-        if _playerName ~= nil then
+        if _name ~= nil then
 
-			if agcST.checkInTable(agcST.Admins, _playerName) then
+			if agcST.checkInTable(agcST.Admins, _name) then
 			
 				local _cmd = agcST.trimStr(msg)
 			
 				local _chatMessage = ""
             
-                if _cmd:sub(1,4) == "-ban" and agcST.playerIDList[_cmd:sub(6,-1)] ~= nil then
+                if _cmd:sub(1,4) == "-ban" and string.len(_cmd) >= 6 then
                 
-                    local _time = math.floor(os.time())
-                    local _timeout = agcST.getFlagValue("AGC_DisableTimeout")
-                    agcST.disabledPlayerTimeleft[_cmd:sub(6,-1)] = _time + _timeout
-                    agcST.disabledPlayer(agcST.playerIDList[_cmd:sub(6,-1)], _timeout, true)
-					_chatMessage = string.format("玩家【%s】被管理员停飞 %i 秒。", _cmd:sub(6,-1), _timeout)
-					net.send_chat(_chatMessage, 0, 0)
+                    if tonumber(_cmd:sub(6,-1)) == nil then
+                        net.send_chat_to("命令输入错误 请输入：-ban [playerID]", playerID)
+                        return msg
+                    end
+                    
+                    for _playerName, _playerID in pairs(agcST.playerIDList) do
+                        if _playerID == tonumber(_cmd:sub(6,-1)) then
+                        
+                            local _time = math.floor(os.time())
+                            local _timeout = agcST.getFlagValue("AGC_DisableTimeout")
+                            agcST.disabledPlayerTimeleft[_playerName] = _time + _timeout
+                            agcST.disabledPlayer(_playerID, _timeout, true)
+                            _chatMessage = string.format("玩家【%s】被管理员停飞 %i 秒。", _playerName, _timeout)
+                            net.send_chat(_chatMessage, 0, 0)
+                            
+                            break
+                        end
+                    end
+                
             
-                elseif _cmd:sub(1,5) == "-kick" and agcST.playerIDList[_cmd:sub(7,-1)] ~= nil then
+                elseif _cmd:sub(1,5) == "-kick" and string.len(_cmd) >= 7 then
 				
-                    net.force_player_slot(agcST.playerIDList[_cmd:sub(7,-1)], 0, '')
-					_chatMessage = string.format("玩家【%s】被管理员踢回到观众席。",_cmd:sub(7,-1))
-					net.send_chat(_chatMessage, 0, 0)
+                    if tonumber(_cmd:sub(7,-1)) == nil then
+                        net.send_chat_to("命令输入错误 请输入：-kick [playerID]", playerID)
+                        return msg
+                    end
+                    
+                    for _playerName, _playerID in pairs(agcST.playerIDList) do
+                        if _playerID == tonumber(_cmd:sub(7,-1)) then
+                        
+                            net.force_player_slot(_playerID, 0, '')
+                            _chatMessage = string.format("玩家【%s】被管理员踢回到观众席。",_playerName)
+                            net.send_chat(_chatMessage, 0, 0)
+                            
+                            break
+                        end
+                    end
             
+                elseif _cmd:sub(1,3) == "-id" and string.len(_cmd) >= 5 then
+                
+                    local _check = _cmd:sub(5,-1)
+                    local _result = 0
+                    local _msg = ""
+                    
+                    for _playerName, _playerID in pairs(agcST.playerIDList) do
+                        if string.find(_playerName, _check) ~= nil then
+                            _result = _result + 1
+                            _msg = _msg .. string.format("【%d -- %s】 ", _playerID, _playerName)
+                        end
+                    end
+                    
+                    _chatMessage = string.format("找到 %d 个玩家：%s", _result, _msg)
+                    
+                    net.send_chat_to(_chatMessage, playerID)
+                    
                 end
             
             end
